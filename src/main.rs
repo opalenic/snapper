@@ -1,17 +1,36 @@
-use notify::{Watcher, DebouncedEvent, RecursiveMode};
+use notify::{DebouncedEvent, RecursiveMode, Watcher};
+use serde::Deserialize;
 use simple_logger::SimpleLogger;
 
 use std::sync::mpsc;
 use std::time::Duration;
 
+#[derive(Debug, Deserialize)]
+struct ConfigFile {
+    file_paths: Vec<String>,
+}
+
 fn main() {
     SimpleLogger::new().init().unwrap();
 
-    let (tx, rx) = mpsc::channel();
+    let config_file = std::fs::File::open("./config.yaml").unwrap();
+    let config: ConfigFile = serde_yaml::from_reader(config_file).unwrap();
 
+    let (tx, rx) = mpsc::channel();
     let mut watcher = notify::watcher(tx, Duration::from_secs(5)).unwrap();
 
-    watcher.watch("./test.txt", RecursiveMode::NonRecursive).unwrap();
+    for watch_file_path_str in config.file_paths {
+        let path = std::path::Path::new(&watch_file_path_str);
+
+        if path.is_file() {
+            log::debug!("Starting watch on file {}", path.display());
+            watcher
+                .watch(&watch_file_path_str, RecursiveMode::NonRecursive)
+                .unwrap();
+        } else {
+            log::error!("{} does not exist or is not a file.", path.display());
+        }
+    }
 
     loop {
         match rx.recv().unwrap() {
@@ -23,10 +42,10 @@ fn main() {
             }
             DebouncedEvent::Create(path) => {
                 log::debug!("Create event: {path:?} was just created.");
-            },
+            }
             DebouncedEvent::Write(path) => {
                 log::debug!("Write event: {path:?} was just written to.")
-            },
+            }
             DebouncedEvent::Chmod(path) => {
                 log::debug!("Chmod event: The attributes of {path:?} just changed.")
             }
@@ -38,7 +57,7 @@ fn main() {
             }
             DebouncedEvent::Rescan => {
                 log::debug!("Rescan event.")
-            },
+            }
             DebouncedEvent::Error(err, path_opt) => {
                 log::error!("Error event: Encountered error {err} while watching {path_opt:?}.");
             }
