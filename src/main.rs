@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use clap::Parser;
 use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Deserialize;
 use simple_logger::SimpleLogger;
@@ -72,10 +73,10 @@ fn start_file_watcher(
 }
 
 fn process_write_event(
-    changed_path_buf: &PathBuf,
+    changed_path: &Path,
     output_dir_lookup: &HashMap<PathBuf, PathBuf>,
 ) -> Result<()> {
-    let canonical_path = changed_path_buf.canonicalize()?;
+    let canonical_path = changed_path.canonicalize()?;
 
     let backup_dir = output_dir_lookup
         .get(&canonical_path)
@@ -104,10 +105,22 @@ fn process_write_event(
     Ok(())
 }
 
+/// Simple file backup tool.
+#[derive(Parser, Debug)]
+#[clap(author, version, about)]
+struct CliArgs {
+    /// The YAML configuration file.
+    config_file: String,
+}
+
 fn main() {
     SimpleLogger::new().init().unwrap();
 
-    let config_file = File::open("./config.yaml").unwrap();
+    let args = CliArgs::parse();
+
+    let config_file = File::open(args.config_file)
+        .unwrap_or_else(|e| panic!("The specified configuration file can't be opened. {e:?}"));
+
     let output_dir_lookup = parse_config_file(&config_file);
 
     let (_watcher, event_receiver) = start_file_watcher(&output_dir_lookup);
